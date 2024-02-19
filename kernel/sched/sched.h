@@ -93,6 +93,10 @@
 
 #include "cpupri.h"
 #include "cpudeadline.h"
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_VT_CAP)
+#include <linux/sched/cputime.h>
+#endif
+
 
 #ifdef CONFIG_SCHED_DEBUG
 # define SCHED_WARN_ON(x)      WARN_ONCE(x, #x)

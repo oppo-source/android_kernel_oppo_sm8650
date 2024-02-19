@@ -115,6 +115,11 @@
 
 #define EXTRA_INP_SS_DISABLE	BIT(5)
 
+#ifdef OPLUS_FEATURE_CHG_BASIC
+#define USB3_PRI_LINK_REGS_LLUCTL(n)	(0xd024 + ((n) * 0x80))
+#define FORCE_GEN1_MASK			BIT(10)
+#endif
+
 /* QSCRATCH_GENERAL_CFG register bit offset */
 #define PIPE_UTMI_CLK_SEL	BIT(0)
 #define PIPE3_PHYSTATUS_SW	BIT(3)
@@ -5060,6 +5065,10 @@ static int dwc3_msm_set_role(struct dwc3_msm *mdwc, enum usb_role role)
 
 	dbg_log_string("cur_role:%s new_role:%s refcnt:%d\n", dwc3_msm_usb_role_string(cur_role),
 				dwc3_msm_usb_role_string(role), mdwc->refcnt_dp_usb);
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	dev_err(mdwc->dev, "cur_role:%s new_role:%s refcnt:%d\n", dwc3_msm_usb_role_string(cur_role),
+				dwc3_msm_usb_role_string(role), mdwc->refcnt_dp_usb);
+#endif
 
 	/*
 	 * For boot up without USB cable connected case, don't check
@@ -6705,6 +6714,13 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 {
 	int ret = 0;
 	struct dwc3 *dwc = platform_get_drvdata(mdwc->dwc3);
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	u32 val;
+#endif
+
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	dev_err(mdwc->dev, "%s: turn %s host\n", __func__, on ? "on" : "off");
+#endif
 
 	if (on) {
 		dev_dbg(mdwc->dev, "%s: turn on host\n", __func__);
@@ -6777,6 +6793,15 @@ static int dwc3_otg_start_host(struct dwc3_msm *mdwc, int on)
 
 		dwc3_msm_write_reg_field(mdwc->base, DWC3_GUSB3PIPECTL(0),
 				DWC3_GUSB3PIPECTL_SUSPHY, 1);
+
+#ifdef OPLUS_FEATURE_CHG_BASIC
+		/* disable host gen2 */
+		if (mdwc->ss_phy->flags & PHY_HOST_MODE){
+			dwc3_msm_write_reg_field(mdwc->base, USB3_PRI_LINK_REGS_LLUCTL(0), FORCE_GEN1_MASK, 1);
+			val = dwc3_msm_read_reg_field(mdwc->base, USB3_PRI_LINK_REGS_LLUCTL(0), FORCE_GEN1_MASK);
+			dev_info(mdwc->dev, "Turn on host: FORCE_GEN1_MASK = %d", val);
+		}
+#endif
 
 		/* Reduce the U3 exit handshake timer from 8us to approximately
 		 * 300ns to avoid lfps handshake interoperability issues
@@ -6896,6 +6921,10 @@ static int dwc3_otg_start_peripheral(struct dwc3_msm *mdwc, int on)
 	}
 	dbg_event(0xFF, "StrtGdgt gsync",
 		atomic_read(&mdwc->dev->power.usage_count));
+
+#ifdef OPLUS_FEATURE_CHG_BASIC
+	dev_err(mdwc->dev, "%s: turn %s gadget\n", __func__, on ? "on" : "off");
+#endif
 
 	if (on) {
 		dev_dbg(mdwc->dev, "%s: turn on gadget\n", __func__);
@@ -7017,7 +7046,11 @@ static void dwc3_otg_sm_work(struct work_struct *w)
 	}
 
 	state = dwc3_drd_state_string(mdwc->drd_state);
+#ifndef OPLUS_FEATURE_CHG_BASIC
 	dev_dbg(mdwc->dev, "%s state\n", state);
+#else
+	dev_err(mdwc->dev, "%s state\n", state);
+#endif
 	dbg_event(0xFF, state, 0);
 
 	/* Check OTG state */
