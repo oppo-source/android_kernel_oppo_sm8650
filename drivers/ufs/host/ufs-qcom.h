@@ -189,6 +189,128 @@ enum {
 #define UFS_QCOM_MAX_HS_GEAR(x) (((x) & UFS_MAX_HS_GEAR_MASK) >>\
 				 UFS_MAX_HS_GEAR_SHIFT)
 
+/*define ufs uic error code*/
+/*feature-flashaging806-v001-1-begin*/
+enum unipro_pa_errCode {
+	UNIPRO_PA_LANE0_ERR_CNT,
+	UNIPRO_PA_LANE1_ERR_CNT,
+	UNIPRO_PA_LANE2_ERR_CNT,
+	UNIPRO_PA_LANE3_ERR_CNT,
+	UNIPRO_PA_LINE_RESET,
+	UNIPRO_PA_ERR_MAX
+};
+
+enum unipro_dl_errCode {
+	UNIPRO_DL_NAC_RECEIVED,
+	UNIPRO_DL_TCX_REPLAY_TIMER_EXPIRED,
+	UNIPRO_DL_AFCX_REQUEST_TIMER_EXPIRED,
+	UNIPRO_DL_FCX_PROTECTION_TIMER_EXPIRED,
+	UNIPRO_DL_CRC_ERROR,
+	UNIPRO_DL_RX_BUFFER_OVERFLOW,
+	UNIPRO_DL_MAX_FRAME_LENGTH_EXCEEDED,
+	UNIPRO_DL_WRONG_SEQUENCE_NUMBER,
+	UNIPRO_DL_AFC_FRAME_SYNTAX_ERROR,
+	UNIPRO_DL_NAC_FRAME_SYNTAX_ERROR,
+	UNIPRO_DL_EOF_SYNTAX_ERROR,
+	UNIPRO_DL_FRAME_SYNTAX_ERROR,
+	UNIPRO_DL_BAD_CTRL_SYMBOL_TYPE,
+	UNIPRO_DL_PA_INIT_ERROR,
+	UNIPRO_DL_PA_ERROR_IND_RECEIVED,
+	UNIPRO_DL_PA_INIT,
+	UNIPRO_DL_ERR_MAX
+};
+
+enum unipro_nl_errCode {
+	UNIPRO_NL_UNSUPPORTED_HEADER_TYPE,
+	UNIPRO_NL_BAD_DEVICEID_ENC,
+	UNIPRO_NL_LHDR_TRAP_PACKET_DROPPING,
+	UNIPRO_NL_ERR_MAX
+};
+
+enum unipro_tl_errCode {
+	UNIPRO_TL_UNSUPPORTED_HEADER_TYPE,
+	UNIPRO_TL_UNKNOWN_CPORTID,
+	UNIPRO_TL_NO_CONNECTION_RX,
+	UNIPRO_TL_CONTROLLED_SEGMENT_DROPPING,
+	UNIPRO_TL_BAD_TC,
+	UNIPRO_TL_E2E_CREDIT_OVERFLOW,
+	UNIPRO_TL_SAFETY_VALVE_DROPPING,
+	UNIPRO_TL_ERR_MAX
+};
+
+enum unipro_dme_errCode {
+	UNIPRO_DME_GENERIC,
+	UNIPRO_DME_TX_QOS,
+	UNIPRO_DME_RX_QOS,
+	UNIPRO_DME_PA_INIT_QOS,
+	UNIPRO_DME_ERR_MAX
+};
+
+struct ufs_transmission_status_t
+{
+	u8  transmission_status_enable;
+
+	u64 gear_min_write_sec;
+	u64 gear_max_write_sec;
+	u64 gear_min_read_sec;
+	u64 gear_max_read_sec;
+
+	u64 gear_min_write_us;
+	u64 gear_max_write_us;
+	u64 gear_min_read_us;
+	u64 gear_max_read_us;
+
+	u64 gear_min_dev_us;
+	u64 gear_max_dev_us;
+
+	u64 gear_min_other_sec;
+	u64 gear_max_other_sec;
+	u64 gear_min_other_us;
+	u64 gear_max_other_us;
+
+	u64 scsi_send_count;
+	u64 dev_cmd_count;
+
+	u64 active_count;
+	u64 active_time;
+
+	u64 sleep_count;
+	u64 sleep_time;
+
+	u64 powerdown_count;
+	u64 powerdown_time;
+
+	u64 power_total_count;
+	u32 current_pwr_mode;
+};
+
+struct signal_quality {
+	u32 ufs_device_err_cnt;
+	u32 ufs_host_err_cnt;
+	u32 ufs_bus_err_cnt;
+	u32 ufs_crypto_err_cnt;
+	u32 ufs_link_lost_cnt;
+	u32 unipro_PA_err_total_cnt;
+	u32 unipro_PA_err_cnt[UNIPRO_PA_ERR_MAX];
+	u32 unipro_DL_err_total_cnt;
+	u32 unipro_DL_err_cnt[UNIPRO_DL_ERR_MAX];
+	u32 unipro_NL_err_total_cnt;
+	u32 unipro_NL_err_cnt[UNIPRO_NL_ERR_MAX];
+	u32 unipro_TL_err_total_cnt;
+	u32 unipro_TL_err_cnt[UNIPRO_TL_ERR_MAX];
+	u32 unipro_DME_err_total_cnt;
+	u32 unipro_DME_err_cnt[UNIPRO_DME_ERR_MAX];
+	u32 gear_err_cnt[UFS_HS_G5 + 1];
+};
+
+struct unipro_signal_quality_ctrl {
+	struct proc_dir_entry *ctrl_dir;
+	struct signal_quality record;
+	struct signal_quality record_upload;
+};
+/*feature-flashaging806-v001-1-end*/
+
+
 /* bit offset */
 #define OFFSET_CLK_NS_REG		0xa
 
@@ -254,6 +376,12 @@ enum ufs_qcom_phy_init_type {
  * Enable this quirk to give an additional TX_HS_SYNC_LENGTH.
  */
 #define UFS_DEVICE_QUIRK_PA_TX_HSG1_SYNC_LENGTH (1 << 16)
+
+/*
+ * Some ufs device vendors need a different Deemphasis setting.
+ * Enable this quirk to tune TX Deemphasis parameters.
+ */
+#define UFS_DEVICE_QUIRK_PA_TX_DEEMPHASIS_TUNING (1 << 17)
 
 static inline void
 ufs_qcom_get_controller_revision(struct ufs_hba *hba,
@@ -572,6 +700,7 @@ struct ufs_qcom_host {
 
 	struct ufs_vreg *vddp_ref_clk;
 	struct ufs_vreg *vccq_parent;
+	struct ufs_vreg *vccq_shutdown;
 	bool work_pending;
 	bool bypass_g4_cfgready;
 	bool is_dt_pm_level_read;
@@ -610,12 +739,14 @@ struct ufs_qcom_host {
 	struct ufs_qcom_ber_hist ber_hist[UFS_QCOM_BER_MODE_MAX];
 	struct list_head regs_list_head;
 	bool ber_th_exceeded;
-
+	bool irq_affinity_support;
 	bool esi_enabled;
 
 	bool bypass_pbl_rst_wa;
 	atomic_t cqhp_update_pending;
 	struct notifier_block ufs_qcom_panic_nb;
+	bool broken_ahit_wa;
+	unsigned long active_cmds;
 };
 
 static inline u32
@@ -687,6 +818,9 @@ out:
  *  SCSI_IOCTL_GET_PCI
  */
 #define UFS_IOCTL_QUERY			0x5388
+/*feature-memorymonitor-v001-1-begin*/
+#define UFS_IOCTL_MONITOR               0x5392  /* For monitor access */
+/*feature-memorymonitor-v001-1-end*/
 
 /**
  * struct ufs_ioctl_query_data - used to transfer data to and from user via

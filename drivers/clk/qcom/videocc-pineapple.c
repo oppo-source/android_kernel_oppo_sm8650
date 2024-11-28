@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * Copyright (c) 2022-2023, Qualcomm Innovation Center, Inc. All rights reserved.
+ * Copyright (c) 2022-2024, Qualcomm Innovation Center, Inc. All rights reserved.
  */
 
 #include <linux/clk.h>
@@ -228,9 +228,11 @@ static const struct freq_tbl ftbl_video_cc_mvs0_clk_src_pineapple_v2[] = {
 
 static const struct freq_tbl ftbl_video_cc_mvs0_clk_src_cliffs[] = {
 	F(576000000, P_VIDEO_CC_PLL0_OUT_MAIN, 1, 0, 0),
+	F(633000000, P_VIDEO_CC_PLL0_OUT_MAIN, 1, 0, 0),
 	F(720000000, P_VIDEO_CC_PLL0_OUT_MAIN, 1, 0, 0),
 	F(1014000000, P_VIDEO_CC_PLL0_OUT_MAIN, 1, 0, 0),
 	F(1098000000, P_VIDEO_CC_PLL0_OUT_MAIN, 1, 0, 0),
+	F(1113000000, P_VIDEO_CC_PLL0_OUT_MAIN, 1, 0, 0),
 	F(1332000000, P_VIDEO_CC_PLL0_OUT_MAIN, 1, 0, 0),
 	F(1600000000, P_VIDEO_CC_PLL0_OUT_MAIN, 1, 0, 0),
 	{ }
@@ -599,6 +601,7 @@ static const struct qcom_reset_map video_cc_pineapple_resets[] = {
 	[VIDEO_CC_MVS1C_CLK_ARES] = { 0x8090, 2 },
 	[VCODEC_VIDEO_CC_MVS1C_BCR] = { 0x8074 },
 	[VIDEO_CC_XO_CLK_ARES] = { 0x8124, 2 },
+	[VIDEO_CC_MVS0_CLK_ARES] = { 0x80b8, 2 },
 };
 
 static const struct regmap_config video_cc_pineapple_regmap_config = {
@@ -648,15 +651,19 @@ static void video_cc_pineapple_fixup_cliffs(struct regmap *regmap)
 	video_cc_mvs0_shift_clk.halt_reg = 0x8144;
 	video_cc_mvs0_shift_clk.hwcg_reg = 0x8144;
 	video_cc_mvs0_shift_clk.clkr.enable_reg = 0x8144;
-	video_cc_mvs0c_shift_clk.halt_reg = 0x8148;
+
 	video_cc_mvs0c_shift_clk.halt_reg = 0x8148;
 	video_cc_mvs0c_shift_clk.hwcg_reg = 0x8148;
-	video_cc_mvs1_shift_clk.clkr.enable_reg = 0x814c;
+	video_cc_mvs0c_shift_clk.clkr.enable_reg = 0x8148;
+
+	video_cc_mvs1_shift_clk.halt_reg = 0x814c;
 	video_cc_mvs1_shift_clk.hwcg_reg = 0x814c;
 	video_cc_mvs1_shift_clk.clkr.enable_reg = 0x814c;
+
 	video_cc_mvs1c_shift_clk.halt_reg = 0x8150;
 	video_cc_mvs1c_shift_clk.hwcg_reg = 0x8150;
 	video_cc_mvs1c_shift_clk.clkr.enable_reg = 0x8150;
+
 	video_cc_sleep_clk_src.cmd_rcgr = 0x8128;
 }
 

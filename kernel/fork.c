@@ -632,6 +632,7 @@ void free_task(struct task_struct *tsk)
 	arch_release_task_struct(tsk);
 	if (tsk->flags & PF_KTHREAD)
 		free_kthread_struct(tsk);
+	bpf_task_storage_free(tsk);
 	free_task_struct(tsk);
 }
 EXPORT_SYMBOL(free_task);
@@ -849,8 +850,35 @@ static void check_mm(struct mm_struct *mm)
 #endif
 }
 
+#ifndef CONFIG_CONT_PTE_HUGEPAGE
 #define allocate_mm()	(kmem_cache_alloc(mm_cachep, GFP_KERNEL))
 #define free_mm(mm)	(kmem_cache_free(mm_cachep, (mm)))
+#else
+#define __allocate_mm()	(kmem_cache_alloc(mm_cachep, GFP_KERNEL))
+#define __free_mm(mm)	(kmem_cache_free(mm_cachep, (mm)))
+
+static inline void *allocate_mm(void)
+{
+	struct mm_struct *mm = __allocate_mm();
+
+	if (unlikely(!mm))
+		return NULL;
+
+	mm->android_kabi_reserved1 = (u64)kzalloc(sizeof(struct chp_vma_name_address),
+						  GFP_KERNEL);
+	if (!mm->android_kabi_reserved1) {
+		__free_mm(mm);
+		return NULL;
+	}
+	return mm;
+}
+
+static inline void free_mm(struct mm_struct *mm)
+{
+	kfree((void *)(mm->android_kabi_reserved1));
+	__free_mm(mm);
+}
+#endif
 
 /*
  * Called when the last reference to the mm
@@ -917,7 +945,6 @@ void __put_task_struct(struct task_struct *tsk)
 	cgroup_free(tsk);
 	task_numa_free(tsk, true);
 	security_task_free(tsk);
-	bpf_task_storage_free(tsk);
 	exit_creds(tsk);
 	delayacct_tsk_free(tsk);
 	put_signal_struct(tsk->signal);
@@ -925,6 +952,14 @@ void __put_task_struct(struct task_struct *tsk)
 	free_task(tsk);
 }
 EXPORT_SYMBOL_GPL(__put_task_struct);
+
+void __put_task_struct_rcu_cb(struct rcu_head *rhp)
+{
+	struct task_struct *task = container_of(rhp, struct task_struct, rcu);
+
+	__put_task_struct(task);
+}
+EXPORT_SYMBOL_GPL(__put_task_struct_rcu_cb);
 
 void __init __weak arch_task_cache_init(void) { }
 
@@ -1252,12 +1287,21 @@ fail_nopgd:
 struct mm_struct *mm_alloc(void)
 {
 	struct mm_struct *mm;
+#ifdef CONFIG_CONT_PTE_HUGEPAGE
+	unsigned long rsv1;
+#endif
 
 	mm = allocate_mm();
 	if (!mm)
 		return NULL;
 
+#ifdef CONFIG_CONT_PTE_HUGEPAGE
+	rsv1 = mm->android_kabi_reserved1;
+#endif
 	memset(mm, 0, sizeof(*mm));
+#ifdef CONFIG_CONT_PTE_HUGEPAGE
+	mm->android_kabi_reserved1 = rsv1;
+#endif
 	return mm_init(mm, current, current_user_ns());
 }
 
@@ -1602,12 +1646,23 @@ static struct mm_struct *dup_mm(struct task_struct *tsk,
 {
 	struct mm_struct *mm;
 	int err;
+#ifdef CONFIG_CONT_PTE_HUGEPAGE
+	unsigned long rsv1;
+#endif
 
 	mm = allocate_mm();
 	if (!mm)
 		goto fail_nomem;
 
+#ifdef CONFIG_CONT_PTE_HUGEPAGE
+	rsv1 = mm->android_kabi_reserved1;
+#endif
 	memcpy(mm, oldmm, sizeof(*mm));
+#ifdef CONFIG_CONT_PTE_HUGEPAGE
+	memcpy((void *)rsv1, (void *)oldmm->android_kabi_reserved1,
+	       sizeof(struct chp_vma_name_address));
+	mm->android_kabi_reserved1 = rsv1;
+#endif
 
 	if (!mm_init(mm, tsk, mm->user_ns))
 		goto fail_nomem;
@@ -2564,6 +2619,7 @@ static __latent_entropy struct task_struct *copy_process(
 		attach_pid(p, PIDTYPE_PID);
 		nr_threads++;
 	}
+	trace_android_vh_copy_process(current, nr_threads, current->signal->nr_threads);
 	total_forks++;
 	hlist_del_init(&delayed.node);
 	spin_unlock(&current->sighand->siglock);
@@ -2683,11 +2739,6 @@ struct task_struct * __init fork_idle(int cpu)
 	}
 
 	return task;
-}
-
-struct mm_struct *copy_init_mm(void)
-{
-	return dup_mm(NULL, &init_mm);
 }
 
 /*
@@ -3110,10 +3161,27 @@ static void sighand_ctor(void *data)
 	init_waitqueue_head(&sighand->signalfd_wqh);
 }
 
-void __init proc_caches_init(void)
+void __init mm_cache_init(void)
 {
 	unsigned int mm_size;
 
+	/*
+	 * The mm_cpumask is located at the end of mm_struct, and is
+	 * dynamically sized based on the maximum CPU number this system
+	 * can have, taking hotplug into account (nr_cpu_ids).
+	 */
+	mm_size = sizeof(struct mm_struct) + cpumask_size();
+
+	mm_cachep = kmem_cache_create_usercopy("mm_struct",
+			mm_size, ARCH_MIN_MMSTRUCT_ALIGN,
+			SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_ACCOUNT,
+			offsetof(struct mm_struct, saved_auxv),
+			sizeof_field(struct mm_struct, saved_auxv),
+			NULL);
+}
+
+void __init proc_caches_init(void)
+{
 	sighand_cachep = kmem_cache_create("sighand_cache",
 			sizeof(struct sighand_struct), 0,
 			SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_TYPESAFE_BY_RCU|
@@ -3131,19 +3199,6 @@ void __init proc_caches_init(void)
 			SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_ACCOUNT,
 			NULL);
 
-	/*
-	 * The mm_cpumask is located at the end of mm_struct, and is
-	 * dynamically sized based on the maximum CPU number this system
-	 * can have, taking hotplug into account (nr_cpu_ids).
-	 */
-	mm_size = sizeof(struct mm_struct) + cpumask_size();
-
-	mm_cachep = kmem_cache_create_usercopy("mm_struct",
-			mm_size, ARCH_MIN_MMSTRUCT_ALIGN,
-			SLAB_HWCACHE_ALIGN|SLAB_PANIC|SLAB_ACCOUNT,
-			offsetof(struct mm_struct, saved_auxv),
-			sizeof_field(struct mm_struct, saved_auxv),
-			NULL);
 	vm_area_cachep = KMEM_CACHE(vm_area_struct, SLAB_PANIC|SLAB_ACCOUNT);
 #ifdef CONFIG_PER_VMA_LOCK
 	vma_lock_cachep = KMEM_CACHE(vma_lock, SLAB_PANIC|SLAB_ACCOUNT);

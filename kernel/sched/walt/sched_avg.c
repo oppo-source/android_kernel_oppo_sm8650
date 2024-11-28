@@ -77,6 +77,9 @@ struct sched_avg_stats *sched_get_nr_running_avg(void)
 	bool any_hyst_time = false;
 	struct walt_sched_cluster *cluster;
 
+	if (unlikely(walt_disabled))
+		return NULL;
+
 	if (!period)
 		goto done;
 
@@ -306,11 +309,13 @@ unsigned int sched_get_cpu_util_pct(int cpu)
 	struct walt_rq *wrq = &per_cpu(walt_rq, cpu);
 
 	raw_spin_lock_irqsave(&rq->__lock, flags);
+	rq_lock_diagnostic(rq, true);
 
 	capacity = capacity_orig_of(cpu);
 
 	util = wrq->prev_runnable_sum + wrq->grp_time.prev_runnable_sum;
 	util = scale_time_to_util(util);
+	rq_lock_diagnostic(rq, false);
 	raw_spin_unlock_irqrestore(&rq->__lock, flags);
 
 	util = (util >= capacity) ? capacity : util;
@@ -322,6 +327,9 @@ int sched_lpm_disallowed_time(int cpu, u64 *timeout)
 {
 	u64 now = sched_clock();
 	u64 bias_end_time = atomic64_read(&per_cpu(busy_hyst_end_time, cpu));
+
+	if (unlikely(walt_disabled))
+		return -EAGAIN;
 
 	if (unlikely(is_reserved(cpu))) {
 		*timeout = 10 * NSEC_PER_MSEC;
