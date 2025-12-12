@@ -901,6 +901,11 @@ static void uaudio_dev_intf_cleanup(struct usb_device *udev,
 	info->xfer_buf_pa = 0;
 
 	info->in_use = false;
+
+#ifdef OPLUS_FEATURE_CHG_BASIC /* CR#4006716 */
+	uaudio_dbg("release resources: intf# %d card# %d\n",
+			info->intf_num, info->pcm_card_num);
+#endif
 }
 
 static void uaudio_event_ring_cleanup_free(struct uaudio_dev *dev)
@@ -929,8 +934,10 @@ static void uaudio_dev_cleanup(struct uaudio_dev *dev)
 		if (!dev->info[if_idx].in_use)
 			continue;
 		uaudio_dev_intf_cleanup(dev->udev, &dev->info[if_idx]);
+#ifndef OPLUS_FEATURE_CHG_BASIC /* CR#4006716 */
 		uaudio_dbg("release resources: intf# %d card# %d\n",
 				dev->info[if_idx].intf_num, dev->card_num);
+#endif
 	}
 
 	dev->num_intf = 0;
@@ -1569,6 +1576,9 @@ static void handle_uaudio_stream_req(struct qmi_handle *handle,
 
 	if (!subs) {
 		uaudio_err("invalid substream\n");
+#ifdef OPLUS_FEATURE_CHG_BASIC
+		ret = -EINVAL;
+#endif
 		goto response;
 	}
 
