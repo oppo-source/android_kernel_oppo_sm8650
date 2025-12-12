@@ -93,6 +93,10 @@
 
 #include "cpupri.h"
 #include "cpudeadline.h"
+#if IS_ENABLED(CONFIG_OPLUS_FEATURE_VT_CAP)
+#include <linux/sched/cputime.h>
+#endif
+
 
 #ifdef CONFIG_SCHED_DEBUG
 # define SCHED_WARN_ON(x)      WARN_ONCE(x, #x)
@@ -185,6 +189,7 @@ static inline int idle_policy(int policy)
 {
 	return policy == SCHED_IDLE;
 }
+
 static inline int fair_policy(int policy)
 {
 	return policy == SCHED_NORMAL || policy == SCHED_BATCH;
@@ -3278,4 +3283,5 @@ static inline void update_current_exec_runtime(struct task_struct *curr,
 	cgroup_account_cputime(curr, delta_exec);
 }
 
+extern bool cpu_busy_with_softirqs(int cpu);
 #endif /* _KERNEL_SCHED_SCHED_H */
